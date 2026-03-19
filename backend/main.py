@@ -867,10 +867,13 @@ async def cmd_adminhelp(msg: types.Message):
     if msg.from_user.id not in ADMIN_IDS: return
     await msg.answer(
         "🛠 <b>ПОЛНЫЙ СПИСОК КОМАНД</b>\n\n"
-        "⭐ <b>Звёзды:</b>\n/addstars · /setstars · /removestars\n\n"
-        "👥 <b>Рефералы:</b>\n/addrefs · /setrefs\n\n"
+        "⭐ <b>Звёзды:</b>\n/addstars · /setstars · /removestars\n"
+        "🚀 <b>Массово:</b> /addstarsall\n\n"
+        "👥 <b>Рефералы:</b>\n/addrefs · /setrefs\n"
+        "🚀 <b>Массово:</b> /addrefsall\n\n"
         "🔓 <b>Вывод:</b>\n/unlock · /lock · /pending\n\n"
         "🎯 <b>Задания:</b>\n/resettasks · /resetcd\n\n"
+        "🎰 <b>Колесо:</b> /resetwheel\n\n"
         "👤 <b>Инфо:</b>\n/userinfo · /allusers · /stats\n\n"
         "🚫 <b>Бан:</b>\n/ban · /unban\n\n"
         "⚙️ <b>Прочее:</b>\n/broadcast · /global · /updatechannels · /myid",
