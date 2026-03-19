@@ -12,7 +12,6 @@ import ReferralsPage from './pages/ReferralsPage';
 import StatsPage from './pages/StatsPage';
 import WithdrawPage from './pages/WithdrawPage';
 import WheelPage from './pages/WheelPage';
-import LeaderboardPage from './pages/LeaderboardPage';
 
 const BOT_USERNAME = 'starquesttbot';
 
@@ -81,7 +80,6 @@ export default function App() {
       reload={loadData} setUser={setUser} />,
     <ReferralsPage key="refs" user={user} refLink={refLink} showToast={showToast} />,
     <StatsPage key="stats" user={user} globalStats={globalStats} />,
-    <LeaderboardPage key="leaderboard" />,
     <WithdrawPage key="withdraw" user={user} showToast={showToast} reload={loadData} />,
     <WheelPage key="wheel" user={user} setUser={setUser} showToast={showToast} reload={loadData} />,
   ];

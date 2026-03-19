@@ -627,12 +627,14 @@ async def cmd_resetcd(msg: types.Message):
 async def cmd_resetwheel(msg: types.Message):
     if msg.from_user.id not in ADMIN_IDS: return
     try:
-        uid = int(msg.text.split()[1])
+        parts = msg.text.split()
+        if len(parts) < 2: raise ValueError("Usage")
+        uid = int(parts[1])
         async with db.pool.acquire() as conn:
             await conn.execute("UPDATE users SET last_wheel_spin=NULL WHERE id=$1", uid)
         await msg.answer(f"✅ Колесо сброшено для {uid}")
-    except Exception:
-        await msg.answer("❌ /resetwheel <id>")
+    except Exception as e:
+        await msg.answer(f"❌ /resetwheel <id>\n{e}")
 
 @dp.message(Command("ban"))
 async def cmd_ban(msg: types.Message):
@@ -858,6 +860,30 @@ async def cmd_updatechannels(msg: types.Message):
             )
     await msg.answer("✅ Каналы обновлены!")
 
+@dp.message(Command("leaderboard"))
+async def cmd_leaderboard(msg: types.Message):
+    if msg.from_user.id not in ADMIN_IDS: return
+    try:
+        parts = msg.text.split()
+        sort = parts[1] if len(parts) > 1 else "stars"
+        if sort not in ["stars", "referrals", "tasks"]:
+            sort = "stars"
+        
+        rows = await db.get_leaderboard(sort, 10)
+        if not rows:
+            await msg.answer("📭 Список пуст")
+            return
+            
+        txt = f"🏆 <b>ТОП-10 ({sort.upper()})</b>\n\n"
+        for i, r in enumerate(rows, 1):
+            val = r.get("stars") if sort == "stars" else r.get("refs") if sort == "referrals" else r.get("tasks")
+            icon = "⭐" if sort == "stars" else "👥" if sort == "referrals" else "✅"
+            txt += f"{i}. {r['name']} — <b>{val}</b> {icon}\n"
+        
+        await msg.answer(txt, parse_mode="HTML")
+    except Exception as e:
+        await msg.answer(f"❌ Ошибка: {e}")
+
 @dp.message(Command("myid"))
 async def cmd_myid(msg: types.Message):
     await msg.answer(f"🆔 Твой ID: {msg.from_user.id}")
@@ -874,6 +900,7 @@ async def cmd_adminhelp(msg: types.Message):
         "🔓 <b>Вывод:</b>\n/unlock · /lock · /pending\n\n"
         "🎯 <b>Задания:</b>\n/resettasks · /resetcd\n\n"
         "🎰 <b>Колесо:</b> /resetwheel\n\n"
+        "🏆 <b>Топ:</b> /leaderboard [stars/referrals/tasks]\n\n"
         "👤 <b>Инфо:</b>\n/userinfo · /allusers · /stats\n\n"
         "🚫 <b>Бан:</b>\n/ban · /unban\n\n"
         "⚙️ <b>Прочее:</b>\n/broadcast · /global · /updatechannels · /myid",

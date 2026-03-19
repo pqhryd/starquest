@@ -29,6 +29,10 @@ async def init_schema():
     sql = schema_path.read_text(encoding="utf-8")
     async with pool.acquire() as conn:
         await conn.execute(sql)
+        # Migration for existing tables
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_wheel_spin TIMESTAMP")
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS qualified_refs_override INTEGER DEFAULT 0")
+        
         # Seed channels
         for ch in CHANNELS:
             await conn.execute(
