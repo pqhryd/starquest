@@ -12,6 +12,7 @@ import ReferralsPage from './pages/ReferralsPage';
 import StatsPage from './pages/StatsPage';
 import WithdrawPage from './pages/WithdrawPage';
 import WheelPage from './pages/WheelPage';
+import LeaderboardPage from './pages/LeaderboardPage';
 
 const BOT_USERNAME = 'starquesttbot';
 
@@ -22,6 +23,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [channels, setChannels] = useState([]);
   const [toast, setToast] = useState(null);
+  const [globalStats, setGlobalStats] = useState({ total_users: 0, total_tasks: 0 });
 
   // Init Telegram SDK
   useEffect(() => {
@@ -44,7 +46,8 @@ export default function App() {
       if (d.ok) {
         setUser(d.user);
         setChannels(d.channels || []);
-        localStorage.setItem(cacheKey(), JSON.stringify({ user: d.user, channels: d.channels }));
+        if (d.global_stats) setGlobalStats(d.global_stats);
+        localStorage.setItem(cacheKey(), JSON.stringify({ user: d.user, channels: d.channels, global_stats: d.global_stats }));
       }
     } catch (e) {
       console.error('Load error:', e);
@@ -77,7 +80,8 @@ export default function App() {
     <TasksPage key="tasks" user={user} channels={channels} showToast={showToast}
       reload={loadData} setUser={setUser} />,
     <ReferralsPage key="refs" user={user} refLink={refLink} showToast={showToast} />,
-    <StatsPage key="stats" user={user} />,
+    <StatsPage key="stats" user={user} globalStats={globalStats} />,
+    <LeaderboardPage key="leaderboard" />,
     <WithdrawPage key="withdraw" user={user} showToast={showToast} reload={loadData} />,
     <WheelPage key="wheel" user={user} setUser={setUser} showToast={showToast} reload={loadData} />,
   ];

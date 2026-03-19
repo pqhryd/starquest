@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
     ton_wallet             TEXT DEFAULT '',           -- TON wallet for crypto withdrawals
     -- Timestamps
     joined_at              TIMESTAMP DEFAULT NOW(),
-    updated_at             TIMESTAMP DEFAULT NOW()
+    updated_at             TIMESTAMP DEFAULT NOW(),
+    last_wheel_spin        TIMESTAMP DEFAULT NULL    -- Server-side cooldown tracking
 );
 
 CREATE TABLE IF NOT EXISTS withdrawals (
@@ -59,6 +60,11 @@ CREATE TABLE IF NOT EXISTS nft_mystery_boxes (
     opened     BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW(),
     opened_at  TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS global_stats (
+    key   TEXT PRIMARY KEY,
+    value BIGINT DEFAULT 0
 );
 
 -- Indexes for common queries

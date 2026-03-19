@@ -87,14 +87,16 @@ export default function WheelPage({ user, setUser, showToast, reload }) {
 
   // Init & cooldown check
   useEffect(() => {
-    drawWheel(0);
+    drawWheel(angleRef.current);
     checkCooldown();
-  }, [drawWheel]);
+    const inv = setInterval(checkCooldown, 10000);
+    return () => clearInterval(inv);
+  }, [drawWheel, user?.last_wheel_spin]);
 
   const checkCooldown = () => {
-    const last = localStorage.getItem('sq_whl');
-    if (!last) { setCooldown(null); return; }
-    const rem = 86400000 - (Date.now() - +last);
+    if (!user?.last_wheel_spin) { setCooldown(null); return; }
+    const last = new Date(user.last_wheel_spin).getTime();
+    const rem = 86400000 - (Date.now() - last);
     if (rem <= 0) { setCooldown(null); return; }
     const h = Math.floor(rem / 3600000);
     const m = Math.floor((rem % 3600000) / 60000);

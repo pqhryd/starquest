@@ -111,7 +111,20 @@ async def api_get_user(request: Request, user_id: int | None = Query(None)):
         await db.update_user(uid, can_withdraw=udata["can_withdraw"])
 
     channels = await db.get_channels()
-    return {"ok": True, "user": udata, "channels": channels, "version": APP_VERSION}
+    
+    # Global stats
+    total_users = await db.get_global_stat("total_users") # we should increment this on create
+    if not total_users:
+        async with db.pool.acquire() as conn:
+            total_users = await conn.fetchval("SELECT COUNT(*) FROM users")
+            await db.increment_global_stat("total_users", total_users)
+
+    g_stats = {
+        "total_users": total_users,
+        "total_tasks": await db.get_total_tasks_completed(),
+    }
+
+    return {"ok": True, "user": udata, "channels": channels, "version": APP_VERSION, "global_stats": g_stats}
 
 
 @app.post("/api/check_task")
@@ -155,6 +168,7 @@ async def api_check_task(request: Request):
             completed.append(channel_id)
         cooldowns[str(channel_id)] = now.isoformat()
         await db.update_user(uid, stars=new_stars, completed_tasks=completed, cooldowns=cooldowns)
+        await db.increment_global_stat("total_tasks", 1)
 
         # Notify referrer on first task
         referrer_id = user.get("referrer")
@@ -274,10 +288,17 @@ async def api_wheel_spin(request: Request):
     if user.get("banned"):
         return JSONResponse({"ok": False, "error": "banned"}, 403)
 
+    # Server cooldown check
+    last_spin = user.get("last_wheel_spin")
+    if last_spin:
+        diff = (datetime.now() - last_spin).total_seconds()
+        if diff < 86400:
+            return {"ok": False, "error": "Cooldown"}
+
     # Server picks the prize
     prize = pick_wheel_prize()
     new_stars = round(float(user["stars"]) + prize["stars"], 1)
-    await db.update_user(uid, stars=new_stars)
+    await db.update_user(uid, stars=new_stars, last_wheel_spin=datetime.now())
 
     return {
         "ok": True,
@@ -285,6 +306,15 @@ async def api_wheel_spin(request: Request):
         "stars_won": prize["stars"],
         "total_stars": new_stars,
     }
+
+@app.get("/api/leaderboard")
+async def api_leaderboard(request: Request, sort: str = "stars"):
+    tg_user = _tg_user(request)
+    if not tg_user:
+        return JSONResponse({"ok": False, "error": "Unauthorized"}, 401)
+    
+    rows = await db.get_leaderboard(sort, 20)
+    return {"ok": True, "leaderboard": rows}
 
 
 @app.post("/api/nft/mystery_box")
@@ -593,6 +623,17 @@ async def cmd_resetcd(msg: types.Message):
     except Exception:
         await msg.answer("❌ /resetcd <id>")
 
+@dp.message(Command("resetwheel"))
+async def cmd_resetwheel(msg: types.Message):
+    if msg.from_user.id not in ADMIN_IDS: return
+    try:
+        uid = int(msg.text.split()[1])
+        async with db.pool.acquire() as conn:
+            await conn.execute("UPDATE users SET last_wheel_spin=NULL WHERE id=$1", uid)
+        await msg.answer(f"✅ Колесо сброшено для {uid}")
+    except Exception:
+        await msg.answer("❌ /resetwheel <id>")
+
 @dp.message(Command("ban"))
 async def cmd_ban(msg: types.Message):
     if msg.from_user.id not in ADMIN_IDS: return
@@ -782,6 +823,28 @@ async def cmd_global(msg: types.Message):
         else:
             await msg.answer(f"❌ Неизвестное действие: {action}"); return
     await msg.answer(f"✅ {action} применено для {total} пользователей")
+
+@dp.message(Command("addstarsall"))
+async def cmd_addstarsall(msg: types.Message):
+    if msg.from_user.id not in ADMIN_IDS: return
+    try:
+        amt = float(msg.text.split()[1])
+        async with db.pool.acquire() as conn:
+            await conn.execute("UPDATE users SET stars=ROUND((stars+$1)::numeric,1) WHERE banned=FALSE", amt)
+        await msg.answer(f"✅ Всем добавлено по {amt} звёзд!")
+    except Exception:
+        await msg.answer("❌ /addstarsall <кол-во>")
+
+@dp.message(Command("addrefsall"))
+async def cmd_addrefsall(msg: types.Message):
+    if msg.from_user.id not in ADMIN_IDS: return
+    try:
+        amt = int(msg.text.split()[1])
+        async with db.pool.acquire() as conn:
+            await conn.execute("UPDATE users SET qualified_refs_override=qualified_refs_override+$1 WHERE banned=FALSE", amt)
+        await msg.answer(f"✅ Всем добавлено по {amt} рефералов!")
+    except Exception:
+        await msg.answer("❌ /addrefsall <кол-во>")
 
 @dp.message(Command("updatechannels"))
 async def cmd_updatechannels(msg: types.Message):

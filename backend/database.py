@@ -114,6 +114,52 @@ async def get_channels() -> list:
         return [dict(r) for r in rows]
 
 
+async def increment_global_stat(key: str, amount: int = 1):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO global_stats (key, value) VALUES ($1, $2) "
+            "ON CONFLICT (key) DO UPDATE SET value = global_stats.value + $2",
+            key, amount
+        )
+
+
+async def get_global_stat(key: str) -> int:
+    async with pool.acquire() as conn:
+        val = await conn.fetchval("SELECT value FROM global_stats WHERE key=$1", key)
+        return val or 0
+
+
+async def get_total_tasks_completed() -> int:
+    """Sum of all completed tasks across all users + global counter."""
+    async with pool.acquire() as conn:
+        # We also count manual increments if any
+        global_val = await get_global_stat("total_tasks")
+        # For small-medium apps, we can just count live data for accuracy
+        # But global_stats is better for "all time" metrics
+        return global_val
+
+
+async def get_leaderboard(sort_by: str = "stars", limit: int = 10) -> list:
+    """sort_by: 'stars', 'referrals', 'tasks'"""
+    async with pool.acquire() as conn:
+        if sort_by == "stars":
+            rows = await conn.fetch("SELECT id, first_name, username, stars FROM users WHERE banned=FALSE ORDER BY stars DESC LIMIT $1", limit)
+        elif sort_by == "referrals":
+            rows = await conn.fetch("SELECT id, first_name, username, jsonb_array_length(referrals) as refs FROM users WHERE banned=FALSE ORDER BY refs DESC LIMIT $1", limit)
+        elif sort_by == "tasks":
+            rows = await conn.fetch("SELECT id, first_name, username, jsonb_array_length(completed_tasks) as tasks FROM users WHERE banned=FALSE ORDER BY tasks DESC LIMIT $1", limit)
+        else:
+            return []
+        
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["name"] = display_name(r["first_name"], r["username"], r["id"])
+            if "stars" in d: d["stars"] = float(d["stars"])
+            result.append(d)
+        return result
+
+
 async def get_user_data(user: dict) -> dict:
     """Build full user response with qualified refs count."""
     refs = _json_loads(user["referrals"], [])
@@ -163,4 +209,5 @@ async def get_user_data(user: dict) -> dict:
         "nft_username": user.get("nft_username", ""),
         "nft_data": _json_loads(user.get("nft_data", "{}"), {}),
         "ton_wallet": user.get("ton_wallet", ""),
+        "last_wheel_spin": user.get("last_wheel_spin").isoformat() if user.get("last_wheel_spin") else None,
     }

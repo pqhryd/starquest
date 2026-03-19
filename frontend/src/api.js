@@ -62,3 +62,8 @@ export async function fetchVersion() {
   const r = await fetch(`${API_BASE}/api/version`);
   return r.json();
 }
+
+export async function fetchLeaderboard(sort = 'stars') {
+  const r = await fetch(`${API_BASE}/api/leaderboard${uidParam()}&sort=${sort}`, { headers: headers() });
+  return r.json();
+}
