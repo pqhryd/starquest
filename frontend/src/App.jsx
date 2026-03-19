@@ -97,7 +97,7 @@ export default function App() {
         <Header user={user} tgUser={tgUser} />
         <BalanceCard user={user} onWithdraw={() => switchTab(3)} />
 
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar overscroll-none">
           {pages[activeTab]}
         </div>
 

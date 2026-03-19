@@ -4,7 +4,14 @@
 
 /* ── Global resets ────────────────────────────────────────────────── */
 * { -webkit-tap-highlight-color: transparent; }
-html, body, #root { height: 100%; overflow: hidden; }
+html, body, #root { 
+  height: 100%; 
+  margin: 0; 
+  padding: 0;
+  background: #000;
+  color: #fff;
+  overscroll-behavior: none;
+}
 
 /* ── Scrollbar hide ───────────────────────────────────────────────── */
 .hide-scrollbar::-webkit-scrollbar { width: 0; height: 0; }
