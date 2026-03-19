@@ -30,5 +30,33 @@ WHEEL_PRIZES = [
     {"stars": 10.0, "label": "10 ⭐",  "chance": 0.2},
 ]
 
+# ── Mystery Box Rewards (tiered by cost) ──────────────────────────────
+MYSTERY_BOX_REWARDS = {
+    10.0: [ # Bronze
+        {"type": "stars", "amount": 2,   "chance": 35},
+        {"type": "stars", "amount": 5,   "chance": 30},
+        {"type": "stars", "amount": 10,  "chance": 20},
+        {"type": "stars", "amount": 25,  "chance": 10},
+        {"type": "stars", "amount": 50,  "chance": 4},
+        {"type": "stars", "amount": 100, "chance": 1},
+    ],
+    25.0: [ # Silver
+        {"type": "stars", "amount": 5,   "chance": 35},
+        {"type": "stars", "amount": 12,  "chance": 30},
+        {"type": "stars", "amount": 30,  "chance": 20},
+        {"type": "stars", "amount": 60,  "chance": 10},
+        {"type": "stars", "amount": 120, "chance": 4},
+        {"type": "stars", "amount": 250, "chance": 1},
+    ],
+    50.0: [ # Gold
+        {"type": "stars", "amount": 10,  "chance": 35},
+        {"type": "stars", "amount": 25,  "chance": 30},
+        {"type": "stars", "amount": 60,  "chance": 20},
+        {"type": "stars", "amount": 120, "chance": 10},
+        {"type": "stars", "amount": 250, "chance": 4},
+        {"type": "stars", "amount": 500, "chance": 1},
+    ],
+}
+
 # ── CORS ──────────────────────────────────────────────────────────────
 CORS_ORIGINS = ["*"]

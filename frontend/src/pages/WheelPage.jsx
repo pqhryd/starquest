@@ -118,9 +118,14 @@ export default function WheelPage({ user, setUser, showToast, reload }) {
 
     // Animate spin
     const seg = (Math.PI * 2) / PRIZES.length;
-    const spins = (6 + Math.floor(Math.random() * 4)) * Math.PI * 2;
-    const startAngle = angleRef.current;
-    const target = startAngle + spins + (Math.PI * 1.5) - ((startAngle + spins) % (Math.PI * 2)) - prizeIndex * seg - seg / 2;
+    const extraSpins = (6 + Math.floor(Math.random() * 4)) * Math.PI * 2;
+    
+    // Calculate target angle to land on segment center
+    const currentRot = angleRef.current % (Math.PI * 2);
+    const desiredRot = (Math.PI * 2) - (prizeIndex * seg + seg / 2);
+    const diff = (desiredRot - currentRot + Math.PI * 2) % (Math.PI * 2);
+    
+    const target = angleRef.current + extraSpins + diff;
     const duration = 4500 + Math.random() * 1000;
     const t0 = performance.now();
 
@@ -130,8 +135,7 @@ export default function WheelPage({ user, setUser, showToast, reload }) {
 
     function frame(now) {
       const p = Math.min((now - t0) / duration, 1);
-      const currentAngle = startAngle + (target - startAngle) * ease(p);
-      angleRef.current = currentAngle;
+      const currentAngle = angleRef.current + (target - angleRef.current) * ease(p);
       drawWheel(currentAngle);
 
       if (p < 1) {

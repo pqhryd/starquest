@@ -13,10 +13,10 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.fsm.storage.memory import MemoryStorage
-
 from config import (
     BOT_TOKEN, WEBAPP_URL, BOT_USERNAME, API_PORT, APP_VERSION,
     ADMIN_IDS, PAY_ADMIN_IDS, CHANNELS, WHEEL_PRIZES, CORS_ORIGINS,
+    MYSTERY_BOX_REWARDS,
 )
 import database as db
 from auth import verify_init_data
@@ -301,15 +301,8 @@ async def api_mystery_box(request: Request):
     if float(user["stars"]) < cost:
         return {"ok": False, "error": "Not enough stars"}
 
-    # Random reward
-    rewards = [
-        {"type": "stars", "amount": 1, "chance": 40},
-        {"type": "stars", "amount": 5, "chance": 30},
-        {"type": "stars", "amount": 15, "chance": 15},
-        {"type": "stars", "amount": 25, "chance": 10},
-        {"type": "stars", "amount": 50, "chance": 4},
-        {"type": "stars", "amount": 100, "chance": 1},
-    ]
+    # Random reward based on cost
+    rewards = MYSTERY_BOX_REWARDS.get(cost, MYSTERY_BOX_REWARDS[10.0])
     r = random.random() * 100
     reward = rewards[0]
     for rw in rewards:
