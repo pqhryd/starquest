@@ -112,16 +112,14 @@ async def api_get_user(request: Request, user_id: int | None = Query(None)):
 
     channels = await db.get_channels()
     
-    # Global stats
-    total_users = await db.get_global_stat("total_users") # we should increment this on create
-    if not total_users:
-        async with db.pool.acquire() as conn:
-            total_users = await conn.fetchval("SELECT COUNT(*) FROM users")
-            await db.increment_global_stat("total_users", total_users)
+    # Global stats — live queries for accuracy
+    async with db.pool.acquire() as conn:
+        total_users = await conn.fetchval("SELECT COUNT(*) FROM users")
+        total_tasks = await conn.fetchval("SELECT COALESCE(SUM(jsonb_array_length(completed_tasks)),0) FROM users")
 
     g_stats = {
         "total_users": total_users,
-        "total_tasks": await db.get_total_tasks_completed(),
+        "total_tasks": total_tasks,
     }
 
     return {"ok": True, "user": udata, "channels": channels, "version": APP_VERSION, "global_stats": g_stats}
