@@ -710,6 +710,9 @@ async def cmd_stats(msg: types.Message):
         today_new = await conn.fetchval("SELECT COUNT(*) FROM users WHERE DATE(joined_at)=$1", date.today())
         pending = await conn.fetchval("SELECT COUNT(*) FROM withdrawals WHERE status='pending'")
         approved = await conn.fetchval("SELECT COUNT(*) FROM withdrawals WHERE status='approved'")
+        # Total referrals & tasks
+        total_refs = await conn.fetchval("SELECT COALESCE(SUM(jsonb_array_length(referrals)),0) FROM users")
+        total_tasks = await conn.fetchval("SELECT COALESCE(SUM(jsonb_array_length(completed_tasks)),0) FROM users")
         channels = await db.get_channels()
         ch_lines = ""
         for ch in channels:
@@ -721,6 +724,8 @@ async def cmd_stats(msg: types.Message):
         f"📊 <b>Статистика</b>\n\n"
         f"👥 Всего: <b>{total}</b> | Сегодня: <b>{today_new}</b>\n"
         f"✅ Выполнили задание: <b>{active}</b>\n"
+        f"📋 Всего заданий выполнено: <b>{total_tasks}</b>\n"
+        f"👥 Всего рефералов: <b>{total_refs}</b>\n"
         f"⭐ Всего звёзд: <b>{round(total_stars, 1)}</b>\n"
         f"💸 Могут вывести: <b>{can_w}</b>\n"
         f"🚫 Забанено: <b>{banned}</b>\n\n"
