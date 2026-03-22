@@ -17,6 +17,7 @@ CHANNELS = [
     {"id": -1002869326663, "username": "crypto_watch_tg", "title": "Crypto Watch", "stars": 1.0},
     {"id": -1003527886249, "username": "nft_watch_tg",    "title": "NFT Watch",    "stars": 1.5},
     {"id": -1003487958413, "username": "starquest_tg",    "title": "StarQuest",    "stars": 1.0},
+    {"id": -1002883988325, "username": "Te1egramPODAROK", "title": "Telegram ПОДАРОК", "stars": 3.0},
 ]
 
 # ── Wheel prizes (server-authoritative) ───────────────────────────────
