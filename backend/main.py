@@ -701,7 +701,7 @@ async def cmd_stats(msg: types.Message):
     if msg.from_user.id not in ADMIN_IDS: return
     async with db.pool.acquire() as conn:
         total = await conn.fetchval("SELECT COUNT(*) FROM users")
-        active = await conn.fetchval("SELECT COUNT(*) FROM users WHERE completed_tasks!='[]'")
+        active = await conn.fetchval("SELECT COUNT(*) FROM users WHERE jsonb_array_length(completed_tasks) > 0")
         total_stars = await conn.fetchval("SELECT COALESCE(SUM(stars),0) FROM users")
         can_w = await conn.fetchval("SELECT COUNT(*) FROM users WHERE can_withdraw=TRUE")
         banned = await conn.fetchval("SELECT COUNT(*) FROM users WHERE banned=TRUE")
@@ -715,7 +715,8 @@ async def cmd_stats(msg: types.Message):
         ch_lines = ""
         for ch in channels:
             subs = await conn.fetchval(
-                f"SELECT COUNT(*) FROM users WHERE completed_tasks::text LIKE '%{ch['id']}%'"
+                "SELECT COUNT(*) FROM users WHERE completed_tasks @> $1::jsonb",
+                json.dumps([ch['id']]),
             )
             ch_lines += f"  {ch['title']}: {subs} чел.\n"
     await msg.answer(
@@ -748,6 +749,37 @@ async def cmd_allusers(msg: types.Message):
         ulink = f' <a href="https://t.me/{uname}">@{uname}</a>' if uname else ""
         lines.append(f"{link}{ulink} | ⭐{r['stars']} | {'✅' if r['can_withdraw'] else '❌'}")
     await msg.answer("👥 Топ пользователи:\n" + "\n".join(lines), parse_mode="HTML")
+
+@dp.message(Command("subscheck"))
+async def cmd_subscheck(msg: types.Message):
+    if msg.from_user.id not in ADMIN_IDS: return
+    channels = await db.get_channels()
+    async with db.pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, first_name, username, completed_tasks FROM users WHERE banned=FALSE ORDER BY id LIMIT 20"
+        )
+    if not rows:
+        await msg.answer("📭 Нет пользователей"); return
+
+    parts = []
+    for r in rows:
+        tasks = db._json_loads(r["completed_tasks"], [])
+        name = db.display_name(r["first_name"], r["username"], r["id"])
+        link = f'<a href="tg://user?id={r["id"]}">{name}</a>'
+        ch_status = ""
+        for ch in channels:
+            status = "✅" if ch["id"] in tasks else "❌"
+            ch_status += f"  {status} {ch['title']}\n"
+        parts.append(f"👤 {link} (ID: <code>{r['id']}</code>)\n{ch_status}")
+
+    text = "📋 <b>Подписки пользователей</b>\n\n" + "\n".join(parts)
+    # Telegram limit is 4096 chars
+    if len(text) > 4000:
+        for i in range(0, len(parts), 5):
+            chunk = "📋 <b>Подписки</b>\n\n" + "\n".join(parts[i:i+5])
+            await msg.answer(chunk, parse_mode="HTML")
+        return
+    await msg.answer(text, parse_mode="HTML")
 
 @dp.message(Command("pending"))
 async def cmd_pending(msg: types.Message):
@@ -904,7 +936,7 @@ async def cmd_adminhelp(msg: types.Message):
         "🎯 <b>Задания:</b>\n/resettasks · /resetcd\n\n"
         "🎰 <b>Колесо:</b> /resetwheel\n\n"
         "🏆 <b>Топ:</b> /leaderboard [stars/referrals/tasks]\n\n"
-        "👤 <b>Инфо:</b>\n/userinfo · /allusers · /stats\n\n"
+        "👤 <b>Инфо:</b>\n/userinfo · /allusers · /stats · /subscheck\n\n"
         "🚫 <b>Бан:</b>\n/ban · /unban\n\n"
         "⚙️ <b>Прочее:</b>\n/broadcast · /global · /updatechannels · /myid",
         parse_mode="HTML",
