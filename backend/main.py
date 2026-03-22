@@ -756,7 +756,7 @@ async def cmd_subscheck(msg: types.Message):
     channels = await db.get_channels()
     async with db.pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id, first_name, username, completed_tasks FROM users WHERE banned=FALSE ORDER BY id LIMIT 20"
+            "SELECT id, first_name, username, completed_tasks FROM users WHERE banned=FALSE ORDER BY id"
         )
     if not rows:
         await msg.answer("📭 Нет пользователей"); return
@@ -772,14 +772,47 @@ async def cmd_subscheck(msg: types.Message):
             ch_status += f"  {status} {ch['title']}\n"
         parts.append(f"👤 {link} (ID: <code>{r['id']}</code>)\n{ch_status}")
 
-    text = "📋 <b>Подписки пользователей</b>\n\n" + "\n".join(parts)
-    # Telegram limit is 4096 chars
-    if len(text) > 4000:
-        for i in range(0, len(parts), 5):
-            chunk = "📋 <b>Подписки</b>\n\n" + "\n".join(parts[i:i+5])
-            await msg.answer(chunk, parse_mode="HTML")
-        return
-    await msg.answer(text, parse_mode="HTML")
+    # Store for pagination
+    _subs_cache[msg.from_user.id] = parts
+    await _send_subs_page(msg, parts, 0)
+
+# In-memory cache for subscheck pagination
+_subs_cache: dict[int, list] = {}
+PER_PAGE = 4
+
+async def _send_subs_page(target, parts, page, edit=False):
+    total_pages = max(1, (len(parts) + PER_PAGE - 1) // PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = parts[page * PER_PAGE:(page + 1) * PER_PAGE]
+    text = f"📋 <b>Подписки</b> (стр. {page + 1}/{total_pages})\n\n" + "\n".join(chunk)
+
+    buttons = []
+    if page > 0:
+        buttons.append(InlineKeyboardButton(text="◀️", callback_data=f"subs_page_{page - 1}"))
+    buttons.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="subs_noop"))
+    if page < total_pages - 1:
+        buttons.append(InlineKeyboardButton(text="▶️", callback_data=f"subs_page_{page + 1}"))
+    kb = InlineKeyboardMarkup(inline_keyboard=[buttons])
+
+    if edit:
+        await target.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    else:
+        await target.answer(text, parse_mode="HTML", reply_markup=kb)
+
+@dp.callback_query(F.data.startswith("subs_page_"))
+async def cb_subs_page(callback: types.CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔"); return
+    page = int(callback.data.split("_")[-1])
+    parts = _subs_cache.get(callback.from_user.id, [])
+    if not parts:
+        await callback.answer("Данные устарели, отправь /subscheck заново"); return
+    await _send_subs_page(callback, parts, page, edit=True)
+    await callback.answer()
+
+@dp.callback_query(F.data == "subs_noop")
+async def cb_subs_noop(callback: types.CallbackQuery):
+    await callback.answer()
 
 @dp.message(Command("pending"))
 async def cmd_pending(msg: types.Message):
