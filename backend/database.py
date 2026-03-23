@@ -37,9 +37,17 @@ async def init_schema():
         for ch in CHANNELS:
             await conn.execute(
                 """INSERT INTO channels (id, username, title, stars)
-                   VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING""",
+                   VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET username=$2, title=$3, stars=$4""",
                 ch["id"], ch["username"], ch["title"], ch["stars"],
             )
+            
+        # Clean up removed channels
+        current_ids = [ch["id"] for ch in CHANNELS]
+        if current_ids:
+            await conn.execute("DELETE FROM channels WHERE id != ALL($1::bigint[])", current_ids)
+        else:
+            await conn.execute("DELETE FROM channels")
+
 
 
 # ── JSON helpers ──────────────────────────────────────────────────────

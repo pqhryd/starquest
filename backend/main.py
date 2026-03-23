@@ -920,13 +920,23 @@ async def cmd_addrefsall(msg: types.Message):
 async def cmd_updatechannels(msg: types.Message):
     if msg.from_user.id not in ADMIN_IDS: return
     async with db.pool.acquire() as conn:
+        # 1. Upsert current config channels
         for ch in CHANNELS:
             await conn.execute(
                 "INSERT INTO channels (id,username,title,stars) VALUES ($1,$2,$3,$4) "
                 "ON CONFLICT (id) DO UPDATE SET username=$2, title=$3, stars=$4",
                 ch["id"], ch["username"], ch["title"], ch["stars"],
             )
-    await msg.answer("✅ Каналы обновлены!")
+        
+        # 2. Delete channels from DB that are no longer in config
+        current_ids = [ch["id"] for ch in CHANNELS]
+        if current_ids:
+            # We use ANY array syntax to delete where id is not in the list
+            await conn.execute("DELETE FROM channels WHERE id != ALL($1::bigint[])", current_ids)
+        else:
+            await conn.execute("DELETE FROM channels")
+            
+    await msg.answer("✅ Каналы обновлены (неактуальные удалены)!")
 
 @dp.message(Command("leaderboard"))
 async def cmd_leaderboard(msg: types.Message):
