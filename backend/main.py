@@ -742,11 +742,9 @@ async def cmd_allusers(msg: types.Message):
         )
     lines = []
     for r in rows:
-        fname = r["first_name"] or ""
-        uname = r["username"] or ""
-        display = fname if (fname and fname.lower() != "user") else (uname or str(r["id"]))
-        link = f'<a href="tg://user?id={r["id"]}">{display}</a>'
-        ulink = f' <a href="https://t.me/{uname}">@{uname}</a>' if uname else ""
+        name = db.display_name(r["first_name"], r["username"], r["id"])
+        link = f'<a href="tg://user?id={r["id"]}">{name}</a>'
+        lines.append(f"{link} | ⭐{r['stars']} | {'✅' if r['can_withdraw'] else '❌'}")
         lines.append(f"{link}{ulink} | ⭐{r['stars']} | {'✅' if r['can_withdraw'] else '❌'}")
     await msg.answer("👥 Топ пользователи:\n" + "\n".join(lines), parse_mode="HTML")
 
@@ -813,6 +811,84 @@ async def cb_subs_page(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "subs_noop")
 async def cb_subs_noop(callback: types.CallbackQuery):
     await callback.answer()
+
+# ── Active Referrals Leaderboard ──────────────────────────────────────
+@dp.message(Command("activerefs"))
+async def cmd_activerefs(msg: types.Message):
+    if msg.from_user.id not in ADMIN_IDS: return
+    async with db.pool.acquire() as conn:
+        # Fetch users with their refs, but count only active refs
+        # This is complex in a single query since refs are stored as JSONB array of IDs.
+        # We will fetch all users and their referrers, and calculate it in Python for accuracy,
+        # or use a subquery. Given the current structure, a CTE or subquery is best.
+        query = """
+            WITH active_users AS (
+                SELECT id FROM users WHERE jsonb_array_length(completed_tasks) > 0 AND banned = FALSE
+            )
+            SELECT u.id, u.first_name, u.username,
+                (SELECT COUNT(*) FROM jsonb_array_elements_text(u.referrals) AS ref_id 
+                 WHERE ref_id::bigint IN (SELECT id FROM active_users)) AS active_refs
+            FROM users u
+            WHERE u.banned = FALSE
+            ORDER BY active_refs DESC
+        """
+        rows = await conn.fetch(query)
+
+    # Filter out users with 0 active referrals if desired, or keep everyone.
+    # The prompt asks for a leaderboard, so we only show those with >0 active referrals,
+    # or just show the top. We'll show everyone sorted, but filter out 0 for a cleaner board.
+    parts = []
+    rank = 1
+    for r in rows:
+        if r["active_refs"] == 0: continue
+        name = db.display_name(r["first_name"], r["username"], r["id"])
+        link = f'<a href="tg://user?id={r["id"]}">{name}</a>'
+        parts.append(f"<b>{rank}.</b> {link} — <b>{r['active_refs']}</b> 👥")
+        rank += 1
+
+    if not parts:
+        await msg.answer("📭 Пока нет ни одного активного реферала."); return
+
+    _activerefs_cache[msg.from_user.id] = parts
+    await _send_activerefs_page(msg, parts, 0)
+
+_activerefs_cache: dict[int, list] = {}
+REFS_PER_PAGE = 10
+
+async def _send_activerefs_page(target, parts, page, edit=False):
+    total_pages = max(1, (len(parts) + REFS_PER_PAGE - 1) // REFS_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = parts[page * REFS_PER_PAGE:(page + 1) * REFS_PER_PAGE]
+    text = f"🏆 <b>ТОП (Активные рефералы)</b> (стр. {page + 1}/{total_pages})\n\n" + "\n".join(chunk)
+
+    buttons = []
+    if page > 0:
+        buttons.append(InlineKeyboardButton(text="◀️", callback_data=f"activerefs_page_{page - 1}"))
+    buttons.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="activerefs_noop"))
+    if page < total_pages - 1:
+        buttons.append(InlineKeyboardButton(text="▶️", callback_data=f"activerefs_page_{page + 1}"))
+    kb = InlineKeyboardMarkup(inline_keyboard=[buttons])
+
+    if edit:
+        await target.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    else:
+        await target.answer(text, parse_mode="HTML", reply_markup=kb)
+
+@dp.callback_query(F.data.startswith("activerefs_page_"))
+async def cb_activerefs_page(callback: types.CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔"); return
+    page = int(callback.data.split("_")[-1])
+    parts = _activerefs_cache.get(callback.from_user.id, [])
+    if not parts:
+        await callback.answer("Данные устарели, отправь /activerefs заново"); return
+    await _send_activerefs_page(callback, parts, page, edit=True)
+    await callback.answer()
+
+@dp.callback_query(F.data == "activerefs_noop")
+async def cb_activerefs_noop(callback: types.CallbackQuery):
+    await callback.answer()
+
 
 @dp.message(Command("pending"))
 async def cmd_pending(msg: types.Message):
@@ -956,7 +1032,9 @@ async def cmd_leaderboard(msg: types.Message):
         for i, r in enumerate(rows, 1):
             val = r.get("stars") if sort == "stars" else r.get("refs") if sort == "referrals" else r.get("tasks")
             icon = "⭐" if sort == "stars" else "👥" if sort == "referrals" else "✅"
-            txt += f"{i}. {r['name']} — <b>{val}</b> {icon}\n"
+            name = db.display_name(r["first_name"], r["username"], r["id"])
+            link = f'<a href="tg://user?id={r["id"]}">{name}</a>'
+            txt += f"{i}. {link} — <b>{val}</b> {icon}\n"
         
         await msg.answer(txt, parse_mode="HTML")
     except Exception as e:
@@ -978,7 +1056,8 @@ async def cmd_adminhelp(msg: types.Message):
         "🔓 <b>Вывод:</b>\n/unlock · /lock · /pending\n\n"
         "🎯 <b>Задания:</b>\n/resettasks · /resetcd\n\n"
         "🎰 <b>Колесо:</b> /resetwheel\n\n"
-        "🏆 <b>Топ:</b> /leaderboard [stars/referrals/tasks]\n\n"
+        "🏆 <b>Топ:</b> /leaderboard [stars/referrals/tasks]\n"
+        "🔥 <b>Активные рефы:</b> /activerefs\n\n"
         "👤 <b>Инфо:</b>\n/userinfo · /allusers · /stats · /subscheck\n\n"
         "🚫 <b>Бан:</b>\n/ban · /unban\n\n"
         "⚙️ <b>Прочее:</b>\n/broadcast · /global · /updatechannels · /myid",
