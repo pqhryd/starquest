@@ -73,3 +73,14 @@ CREATE INDEX IF NOT EXISTS idx_users_can_withdraw ON users(can_withdraw);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_user ON withdrawals(user_id);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status);
 CREATE INDEX IF NOT EXISTS idx_mystery_boxes_user ON nft_mystery_boxes(user_id);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT,
+    action TEXT, -- 'task', 'wheel', 'mystery_box', 'referral', 'admin_edit', 'withdrawal'
+    amount REAL,
+    details TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);

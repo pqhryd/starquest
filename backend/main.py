@@ -167,6 +167,9 @@ async def api_check_task(request: Request):
         cooldowns[str(channel_id)] = now.isoformat()
         await db.update_user(uid, stars=new_stars, completed_tasks=completed, cooldowns=cooldowns)
         await db.increment_global_stat("total_tasks", 1)
+        
+        # Log task completion
+        await db.log_event(uid, "task", channel["stars"], f"Channel: {channel['title']} ({channel_id})")
 
         # Notify referrer on first task
         referrer_id = user.get("referrer")
@@ -297,6 +300,9 @@ async def api_wheel_spin(request: Request):
     prize = pick_wheel_prize()
     new_stars = round(float(user["stars"]) + prize["stars"], 1)
     await db.update_user(uid, stars=new_stars, last_wheel_spin=datetime.now())
+    
+    # Log wheel spin
+    await db.log_event(uid, "wheel", prize["stars"], f"Prize: {prize['label']}")
 
     return {
         "ok": True,
@@ -349,6 +355,9 @@ async def api_mystery_box(request: Request):
             "VALUES ($1, $2, $3, TRUE, NOW())",
             uid, cost, json.dumps(reward),
         )
+    
+    # Log mystery box opening
+    await db.log_event(uid, "mystery_box", net, f"Cost: {cost}, Reward: {reward['amount']} ({reward['type']})")
 
     return {"ok": True, "reward": reward, "total_stars": max(0, new_stars)}
 
@@ -383,6 +392,8 @@ async def start_handler(message: types.Message):
                                 "UPDATE users SET referrals=$1, stars=$2 WHERE id=$3",
                                 json.dumps(refs), ref_stars, ref_id,
                             )
+                            # Log referral bonus
+                            await db.log_event(ref_id, "referral", 1.0, f"New referral: {uid}")
                         await conn.execute("UPDATE users SET referrer=$1 WHERE id=$2", ref_id, uid)
                     try:
                         name = db.display_name(message.from_user.first_name, message.from_user.username, uid)
@@ -432,6 +443,9 @@ async def approve_cb(callback: types.CallbackQuery):
             "UPDATE withdrawals SET status='approved', approved_by=$1 WHERE id=$2",
             callback.from_user.id, req_id,
         )
+        # Log withdrawal approval
+        await db.log_event(req["user_id"], "withdrawal", -float(req["amount"]), f"Approved by admin: {callback.from_user.id}")
+        
         user = await conn.fetchrow("SELECT stars FROM users WHERE id=$1", req["user_id"])
         if user:
             new_s = max(0, round(float(user["stars"]) - float(req["amount"]), 1))
@@ -481,6 +495,8 @@ async def reject_cb(callback: types.CallbackQuery):
             "UPDATE withdrawals SET status='rejected', rejected_by=$1 WHERE id=$2",
             callback.from_user.id, req_id,
         )
+        # Log withdrawal rejection (no star change, but audit entry is helpful)
+        await db.log_event(req["user_id"], "withdrawal_reject", 0.0, f"Rejected by admin: {callback.from_user.id}")
     adm = callback.from_user.username or str(callback.from_user.id)
     try:
         await callback.message.edit_text(callback.message.text + f"\n\n❌ ОТКЛОНЕНО @{adm}", parse_mode="HTML")
@@ -509,6 +525,8 @@ async def cmd_addstars(msg: types.Message):
             if not u: await msg.answer("❌ Не найден"); return
             ns = round(float(u["stars"]) + amt, 1)
             await conn.execute("UPDATE users SET stars=$1 WHERE id=$2", ns, uid)
+            # Log admin action
+            await db.log_event(uid, "admin_edit", amt, f"Command: /addstars by {msg.from_user.id}")
         await msg.answer(f"✅ +{amt} звёзд для {uid}. Теперь: {ns}")
     except Exception:
         await msg.answer("❌ /addstars <id> <кол-во>")
@@ -523,6 +541,8 @@ async def cmd_setstars(msg: types.Message):
             if not await conn.fetchrow("SELECT id FROM users WHERE id=$1", uid):
                 await msg.answer("❌ Не найден"); return
             await conn.execute("UPDATE users SET stars=$1 WHERE id=$2", round(amt, 1), uid)
+            # Log admin action
+            await db.log_event(uid, "admin_edit", amt, f"Command: /setstars by {msg.from_user.id}")
         await msg.answer(f"✅ Установлено {amt} звёзд для {uid}")
     except Exception:
         await msg.answer("❌ /setstars <id> <кол-во>")
@@ -538,6 +558,8 @@ async def cmd_removestars(msg: types.Message):
             if not u: await msg.answer("❌ Не найден"); return
             ns = max(0, round(float(u["stars"]) - amt, 1))
             await conn.execute("UPDATE users SET stars=$1 WHERE id=$2", ns, uid)
+            # Log admin action
+            await db.log_event(uid, "admin_edit", -amt, f"Command: /removestars by {msg.from_user.id}")
         await msg.answer(f"✅ -{amt} звёзд у {uid}. Теперь: {ns}")
     except Exception:
         await msg.answer("❌ /removestars <id> <кол-во>")
@@ -977,6 +999,8 @@ async def cmd_addstarsall(msg: types.Message):
         amt = float(msg.text.split()[1])
         async with db.pool.acquire() as conn:
             await conn.execute("UPDATE users SET stars=ROUND((stars+$1)::numeric,1) WHERE banned=FALSE", amt)
+            # Log mass action
+            await db.log_event(0, "global_admin_edit", amt, f"Command: /addstarsall by {msg.from_user.id}")
         await msg.answer(f"✅ Всем добавлено по {amt} звёзд!")
     except Exception:
         await msg.answer("❌ /addstarsall <кол-во>")
@@ -1044,6 +1068,54 @@ async def cmd_leaderboard(msg: types.Message):
 async def cmd_myid(msg: types.Message):
     await msg.answer(f"🆔 Твой ID: {msg.from_user.id}")
 
+@dp.message(Command("logs"))
+async def cmd_logs(msg: types.Message):
+    if msg.from_user.id not in ADMIN_IDS: return
+    try:
+        uid = int(msg.text.split()[1])
+        async with db.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT action, amount, details, created_at FROM audit_logs "
+                "WHERE user_id=$1 ORDER BY created_at DESC LIMIT 15", uid
+            )
+        if not rows:
+            await msg.answer(f"📭 Логи для {uid} не найдены"); return
+        
+        txt = f"📜 <b>Логи действий {uid}:</b>\n\n"
+        for r in rows:
+            sign = "+" if r['amount'] >= 0 else ""
+            txt += f"• <code>{r['created_at'].strftime('%H:%M:%S')}</code> [{r['action']}] <b>{sign}{r['amount']}</b>\n   └ {r['details']}\n"
+        await msg.answer(txt, parse_mode="HTML")
+    except Exception:
+        await msg.answer("❌ /logs <user_id>")
+
+@dp.message(Command("suspicious"))
+async def cmd_suspicious(msg: types.Message):
+    if msg.from_user.id not in ADMIN_IDS: return
+    # Find users where stars > (completed_tasks + referral_bonuses + moderate buffer)
+    # This is a heuristic to find cheaters.
+    async with db.pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT id, first_name, username, stars, 
+                   jsonb_array_length(completed_tasks) as tasks,
+                   (SELECT COUNT(*) FROM jsonb_array_elements_text(referrals)) as refs
+            FROM users 
+            WHERE banned=FALSE 
+            AND stars > (jsonb_array_length(completed_tasks) * 5 + 
+                          (SELECT COUNT(*) FROM jsonb_array_elements_text(referrals)) * 1.5 + 10)
+            ORDER BY stars DESC
+            LIMIT 20
+        """)
+    
+    if not rows:
+        await msg.answer("✅ Подозрительных пользователей не найдено."); return
+        
+    txt = "⚠️ <b>Подозрительные аккаунты:</b>\n<i>(Баланс не соответствует активности)</i>\n\n"
+    for r in rows:
+        name = db.display_name(r['first_name'], r['username'], r['id'])
+        txt += f"👤 {name} (<code>{r['id']}</code>)\n   ⭐ <b>{r['stars']}</b> | ✅ {r['tasks']} | 👥 {r['refs']}\n"
+    await msg.answer(txt, parse_mode="HTML")
+
 @dp.message(Command("adminhelp"))
 async def cmd_adminhelp(msg: types.Message):
     if msg.from_user.id not in ADMIN_IDS: return
@@ -1058,7 +1130,8 @@ async def cmd_adminhelp(msg: types.Message):
         "🎰 <b>Колесо:</b> /resetwheel\n\n"
         "🏆 <b>Топ:</b> /leaderboard [stars/referrals/tasks]\n"
         "🔥 <b>Активные рефы:</b> /activerefs\n\n"
-        "👤 <b>Инфо:</b>\n/userinfo · /allusers · /stats · /subscheck\n\n"
+        "👤 <b>Инфо:</b>\n/userinfo · /allusers · /stats · /subscheck\n"
+        "🕵️ <b>Аудит:</b> /logs [id] · /suspicious\n\n"
         "🚫 <b>Бан:</b>\n/ban · /unban\n\n"
         "⚙️ <b>Прочее:</b>\n/broadcast · /global · /updatechannels · /myid",
         parse_mode="HTML",

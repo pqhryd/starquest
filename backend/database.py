@@ -50,6 +50,15 @@ async def init_schema():
 
 
 
+async def log_event(user_id: int, action: str, amount: float = 0.0, details: str = ""):
+    """Record an action in the audit_logs table."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO audit_logs (user_id, action, amount, details) VALUES ($1, $2, $3, $4)",
+            user_id, action, float(amount), details
+        )
+
+
 # ── JSON helpers ──────────────────────────────────────────────────────
 def _json_loads(val, default=None):
     if default is None:
