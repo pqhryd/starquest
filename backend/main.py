@@ -1116,6 +1116,31 @@ async def cmd_suspicious(msg: types.Message):
         txt += f"👤 {name} (<code>{r['id']}</code>)\n   ⭐ <b>{r['stars']}</b> | ✅ {r['tasks']} | 👥 {r['refs']}\n"
     await msg.answer(txt, parse_mode="HTML")
 
+@dp.message(Command("boxhistory"))
+async def cmd_boxhistory(msg: types.Message):
+    if msg.from_user.id not in ADMIN_IDS: return
+    try:
+        uid = int(msg.text.split()[1])
+        async with db.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT cost, reward, opened_at FROM nft_mystery_boxes "
+                "WHERE user_id=$1 ORDER BY opened_at DESC LIMIT 15", uid
+            )
+        if not rows:
+            await msg.answer(f"📭 История открытия кейсов для {uid} пуста"); return
+            
+        txt = f"🎁 <b>История кейсов {uid}:</b>\n\n"
+        for r in rows:
+            reward = db._json_loads(r['reward'], {})
+            amount = reward.get('amount', 0)
+            type_win = reward.get('type', 'stars')
+            net = round(amount - float(r['cost']), 1)
+            sign = "+" if net >= 0 else ""
+            txt += f"• <code>{r['opened_at'].strftime('%d.%m %H:%M')}</code> | Кейс: <b>{r['cost']}</b>\n  └ Выигрыш: <b>{amount}</b> {type_win} (<b>{sign}{net}</b>)\n"
+        await msg.answer(txt, parse_mode="HTML")
+    except Exception:
+        await msg.answer("❌ /boxhistory <user_id>")
+
 @dp.message(Command("adminhelp"))
 async def cmd_adminhelp(msg: types.Message):
     if msg.from_user.id not in ADMIN_IDS: return
@@ -1131,7 +1156,7 @@ async def cmd_adminhelp(msg: types.Message):
         "🏆 <b>Топ:</b> /leaderboard [stars/referrals/tasks]\n"
         "🔥 <b>Активные рефы:</b> /activerefs\n\n"
         "👤 <b>Инфо:</b>\n/userinfo · /allusers · /stats · /subscheck\n"
-        "🕵️ <b>Аудит:</b> /logs [id] · /suspicious\n\n"
+        "🕵️ <b>Аудит:</b>\n/logs [id] · /boxhistory [id] · /suspicious\n\n"
         "🚫 <b>Бан:</b>\n/ban · /unban\n\n"
         "⚙️ <b>Прочее:</b>\n/broadcast · /global · /updatechannels · /myid",
         parse_mode="HTML",
