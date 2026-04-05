@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useTelegram } from './hooks/useTelegram';
-import { fetchUser } from './api';
+import fetchUser from './api';
 import SplashScreen from './components/SplashScreen';
+import MaintenanceScreen from './components/MaintenanceScreen';
 import Header from './components/Header';
 import BalanceCard from './components/BalanceCard';
 import Navigation from './components/Navigation';
@@ -23,6 +24,8 @@ export default function App() {
   const [channels, setChannels] = useState([]);
   const [toast, setToast] = useState(null);
   const [globalStats, setGlobalStats] = useState({ total_users: 0, total_tasks: 0 });
+  const [maintenance, setMaintenance] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Init Telegram SDK
   useEffect(() => {
@@ -45,8 +48,16 @@ export default function App() {
       if (d.ok) {
         setUser(d.user);
         setChannels(d.channels || []);
+        setMaintenance(!!d.maintenance);
+        setIsAdmin(!!d.is_admin);
         if (d.global_stats) setGlobalStats(d.global_stats);
-        localStorage.setItem(cacheKey(), JSON.stringify({ user: d.user, channels: d.channels, global_stats: d.global_stats }));
+        localStorage.setItem(cacheKey(), JSON.stringify({ 
+          user: d.user, 
+          channels: d.channels, 
+          global_stats: d.global_stats,
+          maintenance: !!d.maintenance,
+          is_admin: !!d.is_admin
+        }));
       }
     } catch (e) {
       console.error('Load error:', e);
@@ -56,7 +67,14 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 1800);
     loadData();
-    return () => clearTimeout(timer);
+    
+    // Auto-refresh maintenance status
+    const interval = setInterval(loadData, 30000); 
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, [loadData]);
 
   function cacheKey() {
@@ -83,6 +101,15 @@ export default function App() {
     <WithdrawPage key="withdraw" user={user} showToast={showToast} reload={loadData} />,
     <WheelPage key="wheel" user={user} setUser={setUser} showToast={showToast} reload={loadData} />,
   ];
+
+  if (maintenance && !isAdmin) {
+    return (
+      <>
+        <AnimatePresence>{loading && <SplashScreen key="splash" />}</AnimatePresence>
+        <MaintenanceScreen />
+      </>
+    );
+  }
 
   return (
     <>

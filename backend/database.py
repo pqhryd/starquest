@@ -5,7 +5,9 @@ from pathlib import Path
 
 import asyncpg
 
-from config import CHANNELS, DATABASE_URL
+import asyncpg
+
+from config import CHANNELS, DATABASE_URL, ADMIN_IDS
 
 pool: asyncpg.Pool | None = None
 
@@ -56,6 +58,23 @@ async def log_event(user_id: int, action: str, amount: float = 0.0, details: str
         await conn.execute(
             "INSERT INTO audit_logs (user_id, action, amount, details) VALUES ($1, $2, $3, $4)",
             user_id, action, float(amount), details
+        )
+
+
+async def get_setting(key: str, default: str = "") -> str:
+    """Get a global setting from the settings table."""
+    async with pool.acquire() as conn:
+        val = await conn.fetchval("SELECT value FROM settings WHERE key=$1", key)
+        return str(val) if val is not None else default
+
+
+async def set_setting(key: str, value: str):
+    """Set a global setting in the settings table."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO settings (key, value) VALUES ($1, $2) "
+            "ON CONFLICT (key) DO UPDATE SET value=$2",
+            key, str(value)
         )
 
 

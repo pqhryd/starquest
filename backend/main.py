@@ -112,17 +112,19 @@ async def api_get_user(request: Request, user_id: int | None = Query(None)):
 
     channels = await db.get_channels()
     
-    # Global stats — live queries for accuracy
-    async with db.pool.acquire() as conn:
-        total_users = await conn.fetchval("SELECT COUNT(*) FROM users")
-        total_tasks = await conn.fetchval("SELECT COALESCE(SUM(jsonb_array_length(completed_tasks)),0) FROM users")
+    # Maintenance check
+    maintenance = await db.get_setting("maintenance_mode", "off") == "on"
+    is_admin = uid in ADMIN_IDS
 
-    g_stats = {
-        "total_users": total_users,
-        "total_tasks": total_tasks,
+    return {
+        "ok": True, 
+        "user": udata, 
+        "channels": channels, 
+        "version": APP_VERSION, 
+        "global_stats": g_stats,
+        "maintenance": maintenance,
+        "is_admin": is_admin
     }
-
-    return {"ok": True, "user": udata, "channels": channels, "version": APP_VERSION, "global_stats": g_stats}
 
 
 @app.post("/api/check_task")
@@ -133,6 +135,10 @@ async def api_check_task(request: Request):
         return JSONResponse({"ok": False, "error": "Unauthorized"}, 401)
 
     uid = tg_user["id"]
+    # Maintenance block
+    if await db.get_setting("maintenance_mode", "off") == "on" and uid not in ADMIN_IDS:
+        return JSONResponse({"ok": False, "error": "maintenance"}, 503)
+
     channel_id = body.get("channel_id")
     user = await db.get_or_create_user(uid)
     if user.get("banned"):
@@ -285,6 +291,10 @@ async def api_wheel_spin(request: Request):
         return JSONResponse({"ok": False, "error": "Unauthorized"}, 401)
 
     uid = tg_user["id"]
+    # Maintenance block
+    if await db.get_setting("maintenance_mode", "off") == "on" and uid not in ADMIN_IDS:
+        return JSONResponse({"ok": False, "error": "maintenance"}, 503)
+
     user = await db.get_or_create_user(uid)
     if user.get("banned"):
         return JSONResponse({"ok": False, "error": "banned"}, 403)
@@ -329,6 +339,10 @@ async def api_mystery_box(request: Request):
         return JSONResponse({"ok": False, "error": "Unauthorized"}, 401)
 
     uid = tg_user["id"]
+    # Maintenance block
+    if await db.get_setting("maintenance_mode", "off") == "on" and uid not in ADMIN_IDS:
+        return JSONResponse({"ok": False, "error": "maintenance"}, 503)
+
     cost = float(body.get("cost", 10))
     user = await db.get_or_create_user(uid)
 
@@ -1141,6 +1155,17 @@ async def cmd_boxhistory(msg: types.Message):
     except Exception:
         await msg.answer("❌ /boxhistory <user_id>")
 
+@dp.message(Command("maintenance"))
+async def cmd_maintenance(msg: types.Message):
+    if msg.from_user.id not in ADMIN_IDS: return
+    try:
+        mode = msg.text.split()[1].lower()
+        if mode not in ["on", "off"]: raise ValueError("Invalid mode")
+        await db.set_setting("maintenance_mode", mode)
+        await msg.answer(f"⚙️ Режим технических работ: <b>{mode.upper()}</b>", parse_mode="HTML")
+    except Exception:
+        await msg.answer("❌ /maintenance <on/off>")
+
 @dp.message(Command("adminhelp"))
 async def cmd_adminhelp(msg: types.Message):
     if msg.from_user.id not in ADMIN_IDS: return
@@ -1158,7 +1183,7 @@ async def cmd_adminhelp(msg: types.Message):
         "👤 <b>Инфо:</b>\n/userinfo · /allusers · /stats · /subscheck\n"
         "🕵️ <b>Аудит:</b>\n/logs [id] · /boxhistory [id] · /suspicious\n\n"
         "🚫 <b>Бан:</b>\n/ban · /unban\n\n"
-        "⚙️ <b>Прочее:</b>\n/broadcast · /global · /updatechannels · /myid",
+        "⚙️ <b>Прочее:</b>\n/maintenance [on/off] · /broadcast\n/global · /updatechannels · /myid",
         parse_mode="HTML",
     )
 
