@@ -45,6 +45,7 @@ export default function App() {
         if (c.user) { setUser(c.user); setChannels(c.channels || []); }
       }
       const d = await fetchUser();
+      console.log('DEBUG: fetchUser response:', d);
       if (d.ok) {
         setUser(d.user);
         setChannels(d.channels || []);

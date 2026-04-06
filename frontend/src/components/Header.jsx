@@ -2,6 +2,10 @@ export default function Header({ user, tgUser, isAdmin }) {
   const name = user?.first_name || tgUser?.first_name || 'StarQuest';
   const avatarUrl = user?.photo_url || tgUser?.photo_url;
   const initial = (name || '?')[0].toUpperCase();
+  
+  // Hardcoded owner check for absolute certainty
+  const myId = user?.id || tgUser?.id;
+  const isActualAdmin = isAdmin || myId === 1206238888;
 
   return (
     <header className="px-5 pt-4 pb-3 flex items-center justify-between shrink-0">
@@ -17,12 +21,13 @@ export default function Header({ user, tgUser, isAdmin }) {
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-extrabold leading-tight">{name}</span>
-          {isAdmin ? (
+          {isActualAdmin ? (
             <div className="flex items-center gap-1 mt-0.5">
                 <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gradient-to-r from-[#FFD700] to-[#FFA500] 
                     text-black font-black tracking-tighter shadow-[0_0_10px_rgba(255,215,0,0.4)] uppercase">
                     Admin
                 </span>
+                <span className="text-[8px] text-acc/50 font-mono ml-1">#{myId || '???'}</span>
             </div>
           ) : (
             <span className="text-[10px] text-sub font-semibold tracking-wide">Участник программы</span>
