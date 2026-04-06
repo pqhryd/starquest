@@ -117,6 +117,16 @@ async def api_get_user(request: Request, user_id: int | None = Query(None)):
 
     channels = await db.get_channels()
     
+    # Global stats — live queries for accuracy
+    async with db.pool.acquire() as conn:
+        total_users = await conn.fetchval("SELECT COUNT(*) FROM users")
+        total_tasks = await conn.fetchval("SELECT COALESCE(SUM(jsonb_array_length(completed_tasks)),0) FROM users")
+
+    g_stats = {
+        "total_users": total_users,
+        "total_tasks": total_tasks,
+    }
+
     # Maintenance check
     maintenance = await db.get_setting("maintenance_mode", "off") == "on"
     is_admin = IS_ADMIN(uid)
@@ -1167,6 +1177,7 @@ async def cmd_maintenance(msg: types.Message):
         mode = msg.text.split()[1].lower()
         if mode not in ["on", "off"]: raise ValueError("Invalid mode")
         await db.set_setting("maintenance_mode", mode)
+        print(f"⚙️ [ADMIN] Maintenance Mode changed to: {mode.upper()}")
         await msg.answer(f"⚙️ Режим технических работ: <b>{mode.upper()}</b>", parse_mode="HTML")
     except Exception:
         await msg.answer("❌ /maintenance <on/off>")
