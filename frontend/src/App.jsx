@@ -123,7 +123,7 @@ export default function App() {
       <AnimatePresence>{loading && <SplashScreen key="splash" />}</AnimatePresence>
 
       <div className="w-full max-w-[480px] h-[100dvh] mx-auto flex flex-col relative z-[1]">
-        <Header user={user} tgUser={tgUser} />
+        <Header user={user} tgUser={tgUser} isAdmin={isAdmin} />
         <BalanceCard user={user} onWithdraw={() => switchTab(3)} />
 
         <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar overscroll-none">

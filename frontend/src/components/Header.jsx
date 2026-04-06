@@ -1,4 +1,4 @@
-export default function Header({ user, tgUser }) {
+export default function Header({ user, tgUser, isAdmin }) {
   const name = user?.first_name || tgUser?.first_name || 'StarQuest';
   const avatarUrl = user?.photo_url || tgUser?.photo_url;
   const initial = (name || '?')[0].toUpperCase();
@@ -17,7 +17,16 @@ export default function Header({ user, tgUser }) {
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-extrabold leading-tight">{name}</span>
-          <span className="text-[10px] text-sub font-semibold tracking-wide">Участник программы</span>
+          {isAdmin ? (
+            <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gradient-to-r from-[#FFD700] to-[#FFA500] 
+                    text-black font-black tracking-tighter shadow-[0_0_10px_rgba(255,215,0,0.4)] uppercase">
+                    Admin
+                </span>
+            </div>
+          ) : (
+            <span className="text-[10px] text-sub font-semibold tracking-wide">Участник программы</span>
+          )}
         </div>
       </div>
       <div className="font-display text-[13px] font-black bg-gradient-to-r from-acc2 to-neon-pink

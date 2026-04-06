@@ -60,6 +60,11 @@ def _tg_user(request: Request, body: dict | None = None) -> dict | None:
     return tg_user
 
 
+def IS_ADMIN(uid: int) -> bool:
+    """Check if UID is in standard admin or pay admin lists."""
+    return uid in ADMIN_IDS or uid in PAY_ADMIN_IDS
+
+
 async def check_sub(user_id: int, channel_id: int) -> bool:
     try:
         m = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
@@ -114,7 +119,7 @@ async def api_get_user(request: Request, user_id: int | None = Query(None)):
     
     # Maintenance check
     maintenance = await db.get_setting("maintenance_mode", "off") == "on"
-    is_admin = uid in ADMIN_IDS
+    is_admin = IS_ADMIN(uid)
 
     return {
         "ok": True, 
@@ -136,7 +141,7 @@ async def api_check_task(request: Request):
 
     uid = tg_user["id"]
     # Maintenance block
-    if await db.get_setting("maintenance_mode", "off") == "on" and uid not in ADMIN_IDS:
+    if await db.get_setting("maintenance_mode", "off") == "on" and not IS_ADMIN(uid):
         return JSONResponse({"ok": False, "error": "maintenance"}, 503)
 
     channel_id = body.get("channel_id")
@@ -292,7 +297,7 @@ async def api_wheel_spin(request: Request):
 
     uid = tg_user["id"]
     # Maintenance block
-    if await db.get_setting("maintenance_mode", "off") == "on" and uid not in ADMIN_IDS:
+    if await db.get_setting("maintenance_mode", "off") == "on" and not IS_ADMIN(uid):
         return JSONResponse({"ok": False, "error": "maintenance"}, 503)
 
     user = await db.get_or_create_user(uid)
@@ -340,7 +345,7 @@ async def api_mystery_box(request: Request):
 
     uid = tg_user["id"]
     # Maintenance block
-    if await db.get_setting("maintenance_mode", "off") == "on" and uid not in ADMIN_IDS:
+    if await db.get_setting("maintenance_mode", "off") == "on" and not IS_ADMIN(uid):
         return JSONResponse({"ok": False, "error": "maintenance"}, 503)
 
     cost = float(body.get("cost", 10))
@@ -1157,7 +1162,7 @@ async def cmd_boxhistory(msg: types.Message):
 
 @dp.message(Command("maintenance"))
 async def cmd_maintenance(msg: types.Message):
-    if msg.from_user.id not in ADMIN_IDS: return
+    if not IS_ADMIN(msg.from_user.id): return
     try:
         mode = msg.text.split()[1].lower()
         if mode not in ["on", "off"]: raise ValueError("Invalid mode")
